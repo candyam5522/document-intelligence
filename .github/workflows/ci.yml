@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.12]
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Cache pre-commit
+        uses: actions/cache@v4
+        id: precommit-cache
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-v1-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install system deps (if needed)
+        run: |
+          sudo apt-get update
+          # Add any system packages you need for test/linters (imagemagick, tesseract, poppler-utils, etc.)
+          # apt-get install -y poppler-utils
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f "pyproject.toml" ] && command -v poetry >/dev/null 2>&1; then
+            # If you use Poetry in CI and poetry is installed, you might prefer `poetry install`.
+            # This branch will rarely run unless you install poetry in the image; kept for reference.
+            poetry install --no-interaction
+          elif [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          else
+            # Minimal fallback: install pytest and pre-commit so CI can run
+            pip install pytest pre-commit
+          fi
+
+      - name: Install dev tools
+        run: |
+          pip install pre-commit black mypy ruff
+
+      - name: Run pre-commit hooks (all files)
+        # Run all hooks against the whole repo. This will fail the job if hooks detect issues.
+        run: |
+          pre-commit run --all-files --show-diff-on-failure
+
+      - name: Run linters & type checks
+        run: |
+          # Black check (pre-commit probably covered this already, but keep an explicit check for clarity)
+          black --check .
+          # Ruff auto-fix was already run by pre-commit; this double-che
